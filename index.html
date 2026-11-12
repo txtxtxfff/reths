@@ -1,0 +1,1140 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <title>热点复盘 · 涨停简图</title>
+
+        <!--
+        esm.sh 文档：https://esm.sh/#docs
+        vue 默认入口是 runtime-only（不含模板编译器），本页用 x-template，
+        故显式指向 dist/vue.esm-browser.prod.js（full build，带运行时编译器）。
+        naive-ui 用 ?external=vue，复用 import map 里同一个 Vue 实例。
+    -->
+        <script type="importmap">
+            {
+                "imports": {
+                    "vue": "https://esm.sh/vue@3.5.45/dist/vue.esm-browser.prod.js",
+                    "dayjs": "https://esm.sh/dayjs@1.11.13",
+                    "dayjs/plugin/utc": "https://esm.sh/dayjs@1.11.13/plugin/utc",
+                    "naive-ui": "https://esm.sh/naive-ui@2.43.2?external=vue"
+                }
+            }
+        </script>
+
+        <style>
+            :root {
+                --brand: #e5413c;
+                --up: #e4393c;
+                --down: #0aa26d;
+                --hot: #ff8b1f;
+                --ink-1: #2b3038;
+                --ink-2: #5c636e;
+                --ink-3: #9aa2ad;
+                --line: #eef0f2;
+                --page: #e9ebee;
+                --card: #fff;
+            }
+
+            * {
+                box-sizing: border-box;
+                -webkit-tap-highlight-color: transparent;
+            }
+
+            html,
+            body {
+                margin: 0;
+                height: 100%;
+            }
+
+            body {
+                background: var(--page);
+                color: var(--ink-1);
+                font-family:
+                    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+                    'Microsoft YaHei', Arial, sans-serif;
+                font-size: 14px;
+                -webkit-font-smoothing: antialiased;
+                overflow: hidden;
+            }
+
+            .layout {
+                display: flex;
+                flex-direction: column;
+                height: 100vh;
+                min-height: 0;
+                background: var(--card);
+            }
+
+            /* ---------- 工具条 ---------- */
+            .topbar {
+                flex: 0 0 auto;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 8px 10px;
+                padding: 10px 16px;
+                border-bottom: 1px solid var(--line);
+            }
+
+            .nav {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .nav-date {
+                width: 132px;
+            }
+
+            .search {
+                flex: 1 1 160px;
+                min-width: 120px;
+                max-width: 260px;
+            }
+
+            /* ---------- 配置行 ---------- */
+            .config {
+                flex: 0 0 auto;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 6px 20px;
+                padding: 6px 16px 9px;
+                background: #fbfcfe;
+                border-bottom: 1px solid var(--line);
+            }
+
+            .config-label {
+                font-size: 12px;
+                color: var(--ink-3);
+            }
+
+            /* ---------- 提示条 / 概览 ---------- */
+            .banner {
+                flex: 0 0 auto;
+                padding: 8px 16px;
+                background: #fff8e6;
+                color: #a4680a;
+                font-size: 12px;
+                border-bottom: 1px solid #f7e6bd;
+            }
+
+            .summary {
+                flex: 0 0 auto;
+                padding: 12px 16px 10px;
+                font-size: 12px;
+                color: var(--ink-2);
+            }
+
+            .summary b {
+                color: var(--brand);
+                font-size: 13px;
+                font-weight: 600;
+            }
+
+            /* ---------- 简图 ---------- */
+            .board {
+                flex: 1 1 auto;
+                min-height: 0;
+                overflow-y: auto;
+                padding-bottom: 18px;
+            }
+
+            .concept {
+                display: flex;
+                gap: 16px;
+                padding: 18px 16px 16px;
+            }
+
+            .concept-side {
+                flex: 0 1 120px;
+                min-width: 76px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                padding-right: 10px;
+            }
+
+            .concept-title {
+                font-size: 15px;
+                font-weight: 600;
+                line-height: 1.35;
+                color: var(--ink-1);
+                word-break: break-all;
+            }
+
+            .concept-count {
+                margin-top: 7px;
+                font-size: 12px;
+                color: var(--ink-2);
+            }
+
+            .concept-top {
+                margin-top: 5px;
+                font-size: 10px;
+                color: var(--ink-3);
+            }
+
+            .concept-body {
+                flex: 1;
+                min-width: 0;
+                padding-left: 16px;
+                border-left: 1px solid #f1f2f4;
+            }
+
+            .tier + .tier {
+                margin-top: 11px;
+                padding-top: 10px;
+                border-top: 1px solid var(--line);
+            }
+
+            .tier-badge {
+                display: inline-block;
+                height: 16px;
+                padding: 0 6px;
+                margin-bottom: 9px;
+                border-radius: 2px;
+                background: var(--hot);
+                color: #fff;
+                font-size: 11px;
+                line-height: 16px;
+                font-weight: 500;
+            }
+
+            .tier-badge.is-hot {
+                background: var(--brand);
+            }
+
+            .stock-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+                gap: 12px 14px;
+            }
+
+            .stock {
+                min-width: 0;
+                padding: 1px 0;
+                /* 让下面的 @container 能按格子实际宽度收字号 */
+                container-type: inline-size;
+            }
+
+            /* 四行：名称+时间 → 代码 → 量能+形态 → 涨跌幅 */
+            .stock-head {
+                display: flex;
+                align-items: baseline;
+                gap: 4px;
+                min-width: 0;
+            }
+
+            .stock-name {
+                flex: 0 1 auto;
+                min-width: 0;
+                font-size: 14px;
+                font-weight: 500;
+                line-height: 1.3;
+                color: var(--ink-1);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            /* 封板时间缩到名称右侧，字号压到 10px，让名称仍是视觉主体 */
+            .stock-time {
+                flex: 0 0 auto;
+                margin-left: auto;
+                font-size: 10px;
+                line-height: 1.3;
+                color: var(--ink-3);
+                font-variant-numeric: tabular-nums;
+                letter-spacing: 0.2px;
+            }
+
+            .stock-code {
+                margin-top: 3px;
+                font-size: 11px;
+                line-height: 1.2;
+                color: var(--ink-3);
+                font-variant-numeric: tabular-nums;
+                letter-spacing: 0.3px;
+            }
+
+            .stock-meta {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                margin-top: 4px;
+                font-size: 11px;
+                line-height: 1.3;
+                color: var(--ink-2);
+                font-variant-numeric: tabular-nums;
+            }
+
+            /* 量能：纯文字，和右侧的形态胶囊区分开 */
+            .stock-volume {
+                flex: 0 1 auto;
+                min-width: 0;
+                font-size: 10px;
+                line-height: 16px;
+                color: var(--ink-2);
+                letter-spacing: 0.2px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .stock-shape {
+                flex: 0 0 auto;
+                padding: 0 5px;
+                border-radius: 3px;
+                background: #f1f3f6;
+                color: var(--ink-2);
+                font-size: 10px;
+                line-height: 16px;
+            }
+
+            /* 一字板 / T 字板是最强的封板信号，单独上色 */
+            .stock-shape.is-strong {
+                background: #fdecea;
+                color: var(--brand);
+            }
+
+            .stock-pct {
+                margin-top: 4px;
+                font-size: 13px;
+                font-weight: 600;
+                line-height: 1.3;
+                font-variant-numeric: tabular-nums;
+            }
+
+            /* 两列窄格（约 80~88px）放不下 14px 名称 + 10px 时间，各降一档保证名称不被截断 */
+            @container (max-width: 88px) {
+                .stock-name {
+                    font-size: 13px;
+                }
+
+                .stock-time {
+                    font-size: 9px;
+                    letter-spacing: 0;
+                }
+            }
+
+            /* 勾选股票代码后点格子复制；窄屏点格子看详情 */
+            .stock.is-clickable {
+                cursor: pointer;
+            }
+
+            .stock-tip {
+                max-width: 320px;
+                line-height: 1.65;
+            }
+
+            /* 窄屏 / 触屏没有 hover，浮层又不会被 naive-ui 收进视口，
+               详情改用底部抽屉，宽度始终跟随屏宽 */
+            .detail {
+                max-height: 56vh;
+                overflow-y: auto;
+            }
+
+            .detail-line {
+                font-size: 13px;
+                line-height: 1.7;
+                color: var(--ink-2);
+                word-break: break-word;
+            }
+
+            .detail-line + .detail-line {
+                margin-top: 3px;
+            }
+
+            .is-up {
+                color: var(--up);
+            }
+
+            .is-down {
+                color: var(--down);
+            }
+
+            .is-flat {
+                color: var(--ink-2);
+            }
+
+            .split {
+                height: 8px;
+                background: #f3f4f6;
+            }
+
+            /* ---------- 表格：只做容器，外观交给 n-data-table ---------- */
+            .table-area {
+                flex: 1 1 auto;
+                min-height: 0;
+                padding: 0 16px 20px;
+            }
+
+            /* 概念分组之间加一条分界线（按行标记，不碰组件内部样式） */
+            .table-area tr.is-group-start > td {
+                border-top: 1px solid #dfe3e8;
+            }
+
+            .concept-cell {
+                font-weight: 600;
+                color: var(--ink-1);
+            }
+
+            .tier-cell {
+                color: #d86b0a;
+            }
+
+            .tier-cell.is-hot {
+                color: #d33a34;
+                font-weight: 600;
+            }
+
+            .pct {
+                font-weight: 600;
+                font-variant-numeric: tabular-nums;
+            }
+
+            /* 长文本列只给色调，截断交给 n-data-table 的 ellipsis */
+            .reason {
+                color: var(--ink-2);
+            }
+
+            /* ---------- 状态 ---------- */
+            .state {
+                flex: 1 1 auto;
+                min-height: 0;
+                overflow: auto;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 40px 20px;
+                color: var(--ink-3);
+                font-size: 13px;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="app"></div>
+
+        <script type="text/x-template" id="app-template">
+            <n-config-provider :locale="locale" :date-locale="dateLocale" inline-theme-disabled>
+                <div class="layout">
+                    <header class="topbar">
+                        <div class="nav">
+                            <n-button size="small" quaternary title="前一天" @click="shiftDay(-1)">‹</n-button>
+                            <n-date-picker
+                                class="nav-date"
+                                size="small"
+                                type="date"
+                                :value="state.date"
+                                :is-date-disabled="isFuture"
+                                :clearable="false"
+                                @update:value="ts => pickDate(ts)"
+                            />
+                            <n-button size="small" quaternary title="后一天" @click="shiftDay(1)">›</n-button>
+                            <n-button size="small" @click="goToday">今天</n-button>
+                        </div>
+
+                        <n-radio-group v-model:value="state.view" size="small">
+                            <n-radio-button value="chart">简图</n-radio-button>
+                            <n-radio-button value="table">表格</n-radio-button>
+                        </n-radio-group>
+
+                        <n-input
+                            v-model:value="state.keyword"
+                            class="search"
+                            size="small"
+                            clearable
+                            placeholder="搜概念 / 个股 / 代码"
+                        />
+
+                        <n-button size="small" @click="exportCsv">导出 CSV</n-button>
+                        <n-button size="small" type="primary" ghost @click="load()">刷新</n-button>
+                    </header>
+
+                    <!-- 配置行：只控制显示，简图与表格共用 -->
+                    <div class="config">
+                        <div class="config-label">显示</div>
+                        <n-checkbox v-model:checked="state.show.time" size="small">封板时间</n-checkbox>
+                        <n-checkbox v-model:checked="state.show.shape" size="small">封板形态</n-checkbox>
+                        <n-checkbox v-model:checked="state.show.code" size="small">股票代码</n-checkbox>
+                    </div>
+
+                    <div class="banner" v-if="state.status.notice">{{ state.status.notice }}</div>
+
+                    <div class="summary" v-if="state.blocks.length">
+                        <b>复盘</b> {{ dateText }} · <b>{{ state.blocks.length }}</b> 概念 ·
+                        <b>{{ stockTotal }}</b> 只涨停股 · 最高 <b>{{ topBoard ? topBoard.name : '—' }}</b>
+                    </div>
+
+                    <div class="state" v-if="state.status.loading">
+                        <n-spin size="small" />
+                    </div>
+
+                    <div class="state" v-else-if="state.status.error">
+                        <n-alert type="error" :title="state.status.error" style="max-width: 520px">
+                            连接失败
+                            <template #action>
+                                <n-button size="small" @click="load()">重试</n-button>
+                            </template>
+                        </n-alert>
+                    </div>
+
+                    <div class="state" v-else-if="!rows.length">
+                        <n-empty size="small" :description="emptyText" />
+                    </div>
+
+                    <!-- 简图：概念 → 板级 → 个股 -->
+                    <main class="board" v-else-if="state.view === 'chart'">
+                        <template v-for="(block, index) in rows" :key="block.name">
+                            <div class="split" v-if="index"></div>
+                            <section class="concept">
+                                <div class="concept-side">
+                                    <div class="concept-title">{{ block.name }}</div>
+                                    <div class="concept-count">{{ block.countText }}</div>
+                                    <div class="concept-top" v-if="block.top">最高 {{ block.top }}</div>
+                                </div>
+                                <div class="concept-body">
+                                    <div class="tier" v-for="group in block.groups" :key="group.name">
+                                        <div class="tier-badge" :class="{ 'is-hot': group.tier >= 3 }">
+                                            {{ group.name }}
+                                        </div>
+                                        <div class="stock-grid">
+                                            <n-tooltip
+                                                v-for="stock in group.stocks"
+                                                :key="stock.code"
+                                                placement="top"
+                                                :delay="120"
+                                                :style="{ maxWidth: 'calc(100vw - 24px)' }"
+                                                :disabled="state.show.code || state.narrow">
+                                                <template #trigger>
+                                                    <div
+                                                        class="stock"
+                                                        :class="{ 'is-clickable': state.show.code || state.narrow }"
+                                                        @click="onStockClick(stock)">
+                                                        <div class="stock-head">
+                                                            <div class="stock-name">{{ stock.name }}</div>
+                                                            <div
+                                                                class="stock-time"
+                                                                v-if="state.show.time && stock.last">
+                                                                {{ stock.last.slice(0, 5) }}
+                                                            </div>
+                                                        </div>
+                                                        <div class="stock-code" v-if="state.show.code">
+                                                            {{ stock.code }}
+                                                        </div>
+                                                        <div class="stock-meta" v-if="showMeta(stock)">
+                                                            <div class="stock-volume" v-if="stock.volume">
+                                                                {{ stock.volume }}
+                                                            </div>
+                                                            <div
+                                                                class="stock-shape"
+                                                                :class="{ 'is-strong': stock.strong }"
+                                                                v-if="state.show.shape && stock.shape">
+                                                                {{ stock.shape }}
+                                                            </div>
+                                                        </div>
+                                                        <div class="stock-pct" :class="stock.tone">
+                                                            {{ stock.pct }}
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                                <div class="stock-tip">
+                                                    <div v-for="(line, i) in tipLines(stock)" :key="i">
+                                                        {{ line }}
+                                                    </div>
+                                                </div>
+                                            </n-tooltip>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+                        </template>
+                    </main>
+
+                    <!-- 表格：n-data-table，flex-height 自适应容器高度 -->
+                    <div class="table-area" v-else>
+                        <n-data-table
+                            flex-height
+                            style="height: 100%"
+                            size="small"
+                            :columns="columns"
+                            :data="tableRows"
+                            :row-props="rowProps"
+                            :pagination="false"
+                            :bordered="false"
+                            :single-line="false" />
+                    </div>
+
+                    <!-- 窄屏详情：底部抽屉，宽度跟屏宽走 -->
+                    <n-drawer
+                        v-model:show="drawerOpen"
+                        placement="bottom"
+                        height="auto"
+                        :auto-focus="false">
+                        <n-drawer-content
+                            :title="state.drawer.title"
+                            :body-style="{ flex: '1 1 auto' }"
+                            closable>
+                            <div class="detail">
+                                <div class="detail-line" v-for="(line, i) in state.drawer.lines" :key="i">
+                                    {{ line }}
+                                </div>
+                            </div>
+                        </n-drawer-content>
+                    </n-drawer>
+                </div>
+            </n-config-provider>
+        </script>
+
+        <script type="module">
+            import { computed, createApp, h, onMounted, reactive } from 'vue'
+            import dayjs from 'dayjs'
+            import utc from 'dayjs/plugin/utc'
+            import naive, { createDiscreteApi, dateZhCN, zhCN } from 'naive-ui'
+
+            dayjs.extend(utc)
+
+            /* 根组件不在 n-config-provider 内，message 要单独开一个实例 */
+            const { message } = createDiscreteApi(['message'], {
+                configProviderProps: { locale: zhCN, dateLocale: dateZhCN }
+            })
+
+            // ============================================================
+            // 常量与小工具
+            // ============================================================
+            const BASE = 'https://ozone.10jqka.com.cn/open/api/draw_lots/v1/rank'
+            const TABS_API = `${BASE}/board_group_data`
+            const DETAIL_API = `${BASE}/all_tab_data`
+            const POOL_API = 'https://data.10jqka.com.cn/dataapi/limit_up/limit_up_pool'
+
+            /* 涨停池按需取字段：涨跌幅 / 首封 / 终封 / 封板形态 / 几天几板 / 涨停题材 */
+            const POOL_FIELDS = '199112,330323,330324,330325,330329,9001'
+            const PAGE_SIZE = 100
+            /* 往前/往后最多找多少天：春节、国庆连休加周末最长 9 天，留点余量 */
+            const BACKTRACK_DAYS = 12
+
+            /* CSV 表头与字段一一对应，导出时不受三个显示开关影响 */
+            const CSV_HEAD =
+                '日期,概念,板级,首封,终封,代码,名称,涨跌幅,板高,封板形态,量能,异动原因,详细原因,涨停题材'
+            const CSV_KEYS =
+                'concept,tier,first,last,code,name,pct,high,shape,volume,abnormal,detail,theme'
+
+            const startOf = ts => dayjs(ts).startOf('day').valueOf()
+            const dayText = ts => dayjs(ts).format('YYYY-MM-DD')
+            const ymd = ts => dayjs(ts).format('YYYYMMDD')
+            /* 封板时间是 UTC+8 的 Unix 秒，固定时区，避免受本机时区影响 */
+            const clock = seconds =>
+                seconds ? dayjs.unix(seconds).utcOffset(8).format('HH:mm:ss') : ''
+            const percent = value => `${value > 0 ? '+' : ''}${value.toFixed(2)}%`
+            const toneOf = value => (value > 0 ? 'is-up' : value < 0 ? 'is-down' : 'is-flat')
+            /* 表头小提示 */
+            const hint = (text, tip) => () => h('div', { title: tip }, text)
+            /* detail_reason 尾部带免责声明，去掉并压平空白 */
+            const clean = text =>
+                (text || '')
+                    .replace(/（免责声明[\s\S]*$/, '')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+
+            async function getJson(url, params) {
+                const target = new URL(url)
+                Object.entries(params).forEach(([key, value]) =>
+                    target.searchParams.set(key, value)
+                )
+                const response = await fetch(target)
+                if (!response.ok) throw new Error(`${target.host} 返回 HTTP ${response.status}`)
+                return response.json()
+            }
+
+            // ============================================================
+            // 三个接口
+            // ============================================================
+            async function fetchTabs(date) {
+                const payload = await getJson(TABS_API, { date })
+                if (Array.isArray(payload?.data?.tab_list)) return payload.data.tab_list
+                /* 非交易日返回 status_code -404，按「当天无数据」处理 */
+                if (payload?.status_code === -404) return []
+                throw new Error(payload?.status_msg || '板块接口返回异常')
+            }
+
+            /* 涨停形态、量能、异动原因、AI 详细解析 */
+            async function fetchDetail(date) {
+                const payload = await getJson(DETAIL_API, { date })
+                const map = new Map()
+                for (const tab of payload?.data?.tab_list || []) {
+                    for (const item of tab.tab_data || []) map.set(item.stock_code, item)
+                }
+                return map
+            }
+
+            /* 封板时间 / 封板形态 / 几天几板 / 当日涨跌幅，按页取完 */
+            async function fetchPool(date) {
+                const map = new Map()
+                for (let page = 1; ; page += 1) {
+                    const payload = await getJson(POOL_API, {
+                        page,
+                        limit: PAGE_SIZE,
+                        field: POOL_FIELDS,
+                        date
+                    })
+                    const list = payload?.data?.info || []
+                    list.forEach(row => map.set(row.code, row))
+                    if (list.length < PAGE_SIZE) return map
+                }
+            }
+
+            // ============================================================
+            // 组装：接口给什么用什么，只做时间与百分比的格式化
+            // ============================================================
+            function toStock(item, board, detail, pool) {
+                const row = pool.get(item.stock_code) || {}
+                const extra = detail.get(item.stock_code) || {}
+                /* rise 是全市场最新涨跌幅，历史日期要用涨停池里当日的 change_rate */
+                const change = Number(row.change_rate ?? item.rise) || 0
+                const shape = row.limit_up_type || ''
+                /* 详情的 reason 形如「缩量涨停||一字涨停」，其中形态与 limit_up_type 完全重合，
+                   独有的信息只有量能，所以只取缩量 / 放量 */
+                const volume = (extra.reason || '')
+                    .split('||')
+                    .map(tag => tag.replace('涨停', ''))
+                    .filter(tag => tag === '缩量' || tag === '放量')
+                    .join(' / ')
+                const code = item.stock_code
+                const name = item.stock_name
+                const abnormal = extra.abnormal_reason || ''
+                const text = clean(extra.detail_reason)
+                const theme = row.reason_type || ''
+                return {
+                    code,
+                    name,
+                    tier: board.board_name,
+                    pct: percent(change),
+                    tone: toneOf(change),
+                    first: clock(Number(row.first_limit_up_time) || 0),
+                    last: clock(Number(row.last_limit_up_time) || 0),
+                    shape,
+                    /* 一字板 / T 字板是最强封板信号，单独上色 */
+                    strong: /一字|T字/.test(shape),
+                    high: row.high_days || '',
+                    volume,
+                    abnormal,
+                    detail: text,
+                    theme,
+                    /* 关键词过滤时逐个字段拼太啰嗦，预先拼成一串 */
+                    search: [name, code, shape, volume, abnormal, text, theme]
+                        .join(' ')
+                        .toLowerCase()
+                }
+            }
+
+            /* 概念、板级、个股的顺序与数量都由接口给出，本地不再重排 */
+            function buildBlocks(tabs, detail, pool) {
+                return tabs
+                    .map(tab => {
+                        const groups = (tab.board_list || [])
+                            .map(board => ({
+                                name: board.board_name,
+                                tier: board.board_num,
+                                stocks: (board.tab_data || []).map(item =>
+                                    toStock(item, board, detail, pool)
+                                )
+                            }))
+                            .filter(group => group.stocks.length)
+                        return {
+                            name: tab.tab_name,
+                            total: tab.stock_num,
+                            top: groups.length ? groups[0].name : '',
+                            groups,
+                            stocks: groups.flatMap(group => group.stocks)
+                        }
+                    })
+                    .filter(block => block.stocks.length)
+            }
+
+            /* 悬停提示：有值才占一行 */
+            const tipLines = stock =>
+                [
+                    `${stock.code} ${stock.tier}${stock.high ? ` · ${stock.high}` : ''}`,
+                    stock.last && `首封 ${stock.first || '—'} · 终封 ${stock.last}`,
+                    [stock.shape, stock.volume].filter(Boolean).join(' · '),
+                    stock.theme,
+                    stock.abnormal
+                ].filter(Boolean)
+
+            /* 从 from 出发找最近有数据的交易日。
+                direction 是切换方向：沿该方向扫满 BACKTRACK_DAYS 天仍无数据才反向兜底，
+                所以周五按「后一天」会落到下周一，而不是原地回弹到周五。
+                0 表示手动选日期，默认往前找（查看已经发生的行情更符合直觉）
+            */
+            async function loadDay(from, direction = 0) {
+                const base = startOf(from)
+                const limit = startOf(Date.now())
+                const scans = direction === 0 ? [-1, 1] : [direction, -direction]
+                for (const dir of scans) {
+                    for (let step = 0; step <= BACKTRACK_DAYS; step += 1) {
+                        const date = dayjs(base).add(step * dir, 'day').valueOf()
+                        if (date > limit) break
+                        const day = ymd(date)
+                        const tabs = await fetchTabs(day)
+                        if (!tabs.length) continue
+                        const [detail, pool] = await Promise.all([
+                            fetchDetail(day).catch(() => new Map()),
+                            fetchPool(day).catch(() => new Map())
+                        ])
+                        return {
+                            date,
+                            blocks: buildBlocks(tabs, detail, pool),
+                            poolOk: pool.size > 0
+                        }
+                    }
+                }
+                throw new Error(
+                    direction > 0
+                        ? '之后没有更多交易日了'
+                        : `前后 ${BACKTRACK_DAYS} 天都没有涨停数据`
+                )
+            }
+
+            // ============================================================
+            // 应用
+            // ============================================================
+            createApp({
+                template: '#app-template',
+                setup() {
+                    /* 触屏或窄屏：tooltip 只做 flip、不会把浮层收回视口，
+                       屏宽不够必然溢出，这类设备改成点格子看底部抽屉 */
+                    const narrowMedia = window.matchMedia('(hover: none), (max-width: 640px)')
+
+                    const state = reactive({
+                        date: startOf(Date.now()),
+                        blocks: [],
+                        view: 'chart',
+                        keyword: '',
+                        narrow: narrowMedia.matches,
+                        /* 三个显示开关，简图与表格共用 */
+                        show: { time: true, shape: true, code: false },
+                        /* 底部抽屉；关闭时保留内容，滑出动画才不会中途变矮 */
+                        drawer: { open: false, title: '', lines: [] },
+                        status: { loading: true, error: '', notice: '' }
+                    })
+
+                    narrowMedia.addEventListener('change', event => {
+                        state.narrow = event.matches
+                        state.drawer.open = false
+                    })
+
+                    const drawerOpen = computed({
+                        get: () => state.drawer.open,
+                        set: open => {
+                            state.drawer.open = open
+                        }
+                    })
+
+                    const openDrawer = (title, lines) => {
+                        state.drawer.title = title
+                        state.drawer.lines = lines.filter(Boolean)
+                        state.drawer.open = true
+                    }
+
+                    const dateText = computed(() => dayText(state.date))
+                    const stockTotal = computed(
+                        () =>
+                            new Set(state.blocks.flatMap(block => block.stocks.map(s => s.code)))
+                                .size
+                    )
+                    /* 当天最高板级：board_list 已按板级降序 */
+                    const topBoard = computed(() =>
+                        state.blocks
+                            .flatMap(block => block.groups)
+                            .reduce(
+                                (top, group) => (!top || group.tier > top.tier ? group : top),
+                                null
+                            )
+                    )
+                    /* 量能与形态都没值时不留空行（时间在名称右侧那行） */
+                    const showMeta = stock =>
+                        Boolean(stock.volume || (state.show.shape && stock.shape))
+
+                    /* 过滤后仍保持「概念 → 板级 → 个股」的形状 */
+                    const rows = computed(() => {
+                        const keyword = state.keyword.trim().toLowerCase()
+                        return state.blocks
+                            .map(block => {
+                                const hitAll = keyword && block.name.toLowerCase().includes(keyword)
+                                const groups = block.groups
+                                    .map(group => ({
+                                        ...group,
+                                        stocks:
+                                            !keyword || hitAll
+                                                ? group.stocks
+                                                : group.stocks.filter(stock =>
+                                                    stock.search.includes(keyword)
+                                                )
+                                    }))
+                                    .filter(group => group.stocks.length)
+                                const count = groups.reduce(
+                                    (total, group) => total + group.stocks.length,
+                                    0
+                                )
+                                return {
+                                    ...block,
+                                    groups,
+                                    countText: keyword
+                                        ? `筛选 ${count} / 共 ${block.total} 只`
+                                        : `共 ${block.total} 只`
+                                }
+                            })
+                            .filter(block => block.groups.length)
+                    })
+
+                    const emptyText = computed(() =>
+                        state.blocks.length ? '没有匹配的个股' : '当日没有涨停数据'
+                    )
+
+                    /* 表格行：三层结构拍平，带上分组标记 */
+                    const tableRows = computed(() =>
+                        rows.value.flatMap(block =>
+                            block.groups.flatMap((group, groupIndex) =>
+                                group.stocks.map((stock, index) => ({
+                                    ...stock,
+                                    key: `${block.name}|${group.name}|${stock.code}`,
+                                    concept: block.name,
+                                    hot: group.tier >= 3,
+                                    blockStart: groupIndex === 0 && index === 0,
+                                    groupStart: index === 0
+                                }))
+                            )
+                        )
+                    )
+
+                    const columns = computed(() => {
+                        /* 窄屏不给浮层，只做单行省略，改成点格子看抽屉 */
+                        const ellipsis = state.narrow ? true : { tooltip: true }
+                        const ellipsisWide = state.narrow
+                            ? true
+                            : { tooltip: { style: { maxWidth: 'min(420px, calc(100vw - 24px))' } } }
+                        const textCell = key => row => ({
+                            class: 'reason',
+                            onClick: state.narrow
+                                ? () => row[key] && openDrawer(row.name, [row[key]])
+                                : undefined
+                        })
+
+                        return [
+                            {
+                                title: '概念',
+                                key: 'concept',
+                                width: 116,
+                                render: row =>
+                                    row.blockStart
+                                        ? h('div', { class: 'concept-cell' }, row.concept)
+                                        : ''
+                            },
+                            {
+                                title: '板级',
+                                key: 'tier',
+                                width: 64,
+                                render: row =>
+                                    row.groupStart
+                                        ? h(
+                                            'div',
+                                            { class: row.hot ? 'tier-cell is-hot' : 'tier-cell' },
+                                            row.tier
+                                        )
+                                        : ''
+                            },
+                            state.show.time && {
+                                title: hint('首封', '当日第一次封板的时间'),
+                                key: 'first',
+                                width: 84
+                            },
+                            state.show.time && {
+                                title: hint('终封', '当日最后一次封板的时间'),
+                                key: 'last',
+                                width: 84
+                            },
+                            state.show.code && { title: '代码', key: 'code', width: 80 },
+                            { title: '名称', key: 'name', width: 104, ellipsis },
+                            {
+                                title: '涨跌幅',
+                                key: 'pct',
+                                width: 84,
+                                render: row => h('div', { class: `pct ${row.tone}` }, row.pct)
+                            },
+                            { title: hint('板高', '几天几板，如 5天3板'), key: 'high', width: 108 },
+                            state.show.shape && {
+                                title: hint('封板形态', '换手板 / 一字板 / T 字板'),
+                                key: 'shape',
+                                width: 92
+                            },
+                            {
+                                title: hint('量能', '缩量涨停 / 放量涨停'),
+                                key: 'volume',
+                                width: 68,
+                                cellProps: () => ({ class: 'reason' })
+                            },
+                            {
+                                title: '异动原因',
+                                key: 'abnormal',
+                                minWidth: 200,
+                                ellipsis,
+                                cellProps: textCell('abnormal')
+                            },
+                            {
+                                title: hint('详细原因', 'AI 归纳的行业与公司原因，hover 查看全文'),
+                                key: 'detail',
+                                minWidth: 240,
+                                ellipsis: ellipsisWide,
+                                cellProps: textCell('detail')
+                            },
+                            {
+                                title: hint(
+                                    '涨停题材',
+                                    '涨停池的个股题材标签，如「人形机器人+优必选入主」'
+                                ),
+                                key: 'theme',
+                                minWidth: 190,
+                                ellipsis,
+                                cellProps: textCell('theme')
+                            }
+                        ].filter(Boolean)
+                    })
+
+                    const rowProps = row => ({ class: row.blockStart ? 'is-group-start' : '' })
+
+                    async function load(date = state.date, direction = 0) {
+                        state.status = { loading: true, error: '', notice: '' }
+                        try {
+                            const result = await loadDay(date, direction)
+                            /* 切完又退回原日期，说明那个方向确实没有交易日数据（要在落地前比较） */
+                            const stuck = direction !== 0 && startOf(result.date) === startOf(state.date)
+                            state.date = result.date
+                            state.blocks = result.blocks
+                            if (result.date !== startOf(date)) {
+                                if (stuck) {
+                                    state.status.notice =
+                                        direction > 0 ? '后面还没有更新的交易日' : '前面没有更早的交易日了'
+                                } else {
+                                    const toward = result.date > startOf(date) ? '下个' : '上个'
+                                    const to = dayText(result.date)
+                                    state.status.notice = `${dayText(date)} 非交易日或无数据，已切到${toward}交易日 ${to}`
+                                }
+                            } else if (!result.poolOk) {
+                                state.status.notice =
+                                    '涨停池未取到：封板时间、封板形态、几天几板缺失，涨跌幅退回最新行情'
+                            }
+                        } catch (error) {
+                            state.status.error = error.message || String(error)
+                        } finally {
+                            state.status.loading = false
+                        }
+                    }
+
+                    async function copyText(text) {
+                        try {
+                            await navigator.clipboard.writeText(text)
+                        } catch {
+                            const area = Object.assign(document.createElement('textarea'), {
+                                value: text
+                            })
+                            area.style.cssText = 'position:fixed;opacity:0'
+                            document.body.append(area)
+                            area.select()
+                            document.execCommand('copy')
+                            area.remove()
+                        }
+                    }
+
+                    /* 勾了股票代码就点格子复制；否则窄屏点格子看详情 */
+                    async function onStockClick(stock) {
+                        if (state.show.code) {
+                            await copyText(stock.code)
+                            message.success(`已复制 ${stock.name} ${stock.code}`)
+                            return
+                        }
+                        if (state.narrow) openDrawer(stock.name, tipLines(stock))
+                    }
+
+                    /* 日期只在取数成功后落地，切到没数据的日期时不会出现
+                       「标题是新日期、内容是旧日期」的错位 */
+                    function pickDate(ts, direction = 0) {
+                        if (!ts) return
+                        load(startOf(ts), direction)
+                    }
+
+                    const goToday = () => pickDate(Date.now())
+                    const isFuture = ts => dayjs(ts).isAfter(dayjs(), 'day')
+
+                    function shiftDay(offset) {
+                        const next = dayjs(state.date).add(offset, 'day').valueOf()
+                        if (next > startOf(Date.now())) {
+                            state.status.notice = '不能选择未来日期'
+                            return
+                        }
+                        pickDate(next, offset)
+                    }
+
+                    function exportCsv() {
+                        const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`
+                        const rows = tableRows.value.map(row => [
+                            dateText.value,
+                            ...CSV_KEYS.split(',').map(key => row[key])
+                        ])
+                        const csv =
+                            '\ufeff' +
+                            [CSV_HEAD.split(','), ...rows]
+                                .map(line => line.map(quote).join(','))
+                                .join('\r\n')
+                        const url = URL.createObjectURL(
+                            new Blob([csv], { type: 'text/csv;charset=utf-8' })
+                        )
+                        const link = Object.assign(document.createElement('a'), {
+                            href: url,
+                            download: `涨停简图_${ymd(state.date)}.csv`
+                        })
+                        link.click()
+                        URL.revokeObjectURL(url)
+                    }
+
+                    onMounted(() => {
+                        document.addEventListener('keydown', event => {
+                            const tag = event.target.tagName
+                            if (tag === 'INPUT' || tag === 'TEXTAREA') return
+                            if (event.key === 'ArrowLeft') shiftDay(-1)
+                            if (event.key === 'ArrowRight') shiftDay(1)
+                        })
+                        load()
+                    })
+
+                    return {
+                        locale: zhCN,
+                        dateLocale: dateZhCN,
+                        state,
+                        dateText,
+                        stockTotal,
+                        topBoard,
+                        showMeta,
+                        rows,
+                        tableRows,
+                        columns,
+                        rowProps,
+                        emptyText,
+                        tipLines,
+                        onStockClick,
+                        drawerOpen,
+                        load,
+                        pickDate,
+                        goToday,
+                        shiftDay,
+                        isFuture,
+                        exportCsv
+                    }
+                }
+            })
+            .use(naive)
+            .mount('#app')
+        </script>
+    </body>
+</html>
